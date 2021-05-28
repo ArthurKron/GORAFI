@@ -97,7 +97,6 @@ if species == "human":
         except KeyError:
             pass
     gene_hpo_annotation = dict((x, y) for x, y in gene_uniprotkb_hpo_annotation)
-    print(gene_hpo_annotation)
     common_genes = set(gene_hpo_annotation.keys()).intersection(common_genes)
 
     ## HPO ONTOLOGY
