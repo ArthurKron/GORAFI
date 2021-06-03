@@ -47,7 +47,7 @@ def replace_first_line(file_path, new_line):
             old_f.readline()
             new_f.write("%s" % new_line)
             shutil.copyfileobj(old_f, new_f)
-    os.rename("%s.tmp" % file_path, file_path)
+    os.replace("%s.tmp" % file_path, file_path)
 
 def download_replace_first(url, save_path, new_line):
     """
