@@ -18,20 +18,15 @@ https://owlcollab.github.io/oboformat/doc/GO.format.obo-1_2.html
 
 from goatools import obo_parser, associations
 from Bio.UniProt.GOA import gafiterator
-from data.scripts.settings import *
+from settings import *
+
 
 import time as tm
 import pandas as pd
-import data.scripts.ontology as onto
-import data.scripts.common as cmn
-import data.scripts.reactome as rc
-import data.scripts.hpo as hpo
-
-
-# the species of interest:
-species = "chicken"
-# GAF file path:
-gaf_file = "%s/goa_%s.gaf" % (raw_path, species)
+import scripts.ontology as onto
+import scripts.common as cmn
+import scripts.reactome as rc
+import scripts.hpo as hpo
 
 # - - - - - - - - -- - - - - - -- - - - - - -- - -- - - -- - -- - - -- - -- - -- - - -- - - -- - -  - - - -
 # - - - - - - - - -- - - - - - -- - - - - - -- - -- - - -- - -- - - -- - -- - -- - - -- - - -- - -  - - - -
@@ -51,8 +46,7 @@ cmn.download_url(reactome_label_url, reactome_label_file)
 cmn.download_url(reactome_annotation_url, reactome_annotation_file)
 
 if species == "human":
-    cmn.download_url(hpo_annotation_url, hpo_annotation_file)
-    cmn.replace_first_line(hpo_annotation_file, "")
+    cmn.download_replace_first(hpo_annotation_url, hpo_annotation_file, "")
     cmn.download_url(hpo_obo_url, hpo_obo_file)
 
 end_dl = tm.time()
@@ -81,52 +75,83 @@ gene_reactome_annotation = rc.load_reactome_annotation(reactome_annotation_file)
 reacterm = rc.load_reacterm_dict(reactome_hierarchy_file, reactome_label_file)
 onto.save_as_obo(reacterm, reactome_obo_file, "ontology: reactome")
 react_onto = obo_parser.GODag(reactome_obo_file)
-
-## Extract common genes between multiple annotations
-common_genes = set(gene_go_annotation.keys()).intersection(set(gene_reactome_annotation.keys()))
+species_genes = set(gene_go_annotation.keys())
+species_genes.update(set(gene_reactome_annotation.keys()))
 
 if species == "human":    
     ## HPO ANNOTATIONS
     gene_hpo_annotation = hpo.load_hpo_annotation(hpo_annotation_file)
     gene_uniprotkb_hpo_annotation = []
     # replace gene symbols by their UniProtKB IDs
-    for k in gene_hpo_annotation.keys():
+    for symbol in gene_hpo_annotation.keys():
         try:
-            uniprotkb_id = gene_symbol_id_dict[k]
-            gene_uniprotkb_hpo_annotation.append((uniprotkb_id, gene_hpo_annotation[k]))
+            uniprotkb_id = gene_symbol_id_dict[symbol]
+            gene_uniprotkb_hpo_annotation.append((uniprotkb_id, gene_hpo_annotation[symbol]))
         except KeyError:
             pass
     gene_hpo_annotation = dict((x, y) for x, y in gene_uniprotkb_hpo_annotation)
-    common_genes = set(gene_hpo_annotation.keys()).intersection(common_genes)
+    species_genes.update(set(gene_hpo_annotation.keys()))
 
-    ## HPO ONTOLOGY
-    hpo_onto = obo_parser.GODag(hpo_obo_file)
+## HPO ONTOLOGY
+hpo_onto = obo_parser.GODag(hpo_obo_file)
 
-# terms to keep on each ontology
+# Terms related to the species on the ontologies
 filtered_go_onto_keys = set()
 filtered_react_onto_keys = set()
 
-# get the GO, Reactome (and if species == human, HPO) nodes corresponding to each gene.
+# get the GO, Reactome (and if species == human, HPO) leaf nodes corresponding to each gene.
 rdy2use_data = {}
-for gene_id in common_genes:
-    ancestry_goid = onto.get_ancestry_id(gene_id, gene_go_annotation, go_onto, relationship = True)
-    filtered_go_onto_keys.update(ancestry_goid)
+for gene_id in species_genes:
 
-    ancestry_reactid = onto.get_ancestry_id(gene_id, gene_reactome_annotation, react_onto)
-    filtered_react_onto_keys.update(ancestry_reactid)
+    # count the annotation sources for this gene:
+    n_onto = 0
 
-    # associate each gene with its nodes.
-    rdy2use_data[gene_id] = {'GO': ancestry_goid, 'Reactome': ancestry_reactid}
+    try:
+        gene_leaf_goid = gene_go_annotation[gene_id]
+        gene_aspect_leaf_goid = set()
+        gene_aspect_goid = set()
+        for goid in gene_leaf_goid:
+            if go_onto[goid].namespace == aspect:
+                # gene_aspect_leaf_goid.add(goid)
+                gene_aspect_goid.update(go_onto[goid].get_all_upper())
+        ancestry_goid = onto.get_ancestry_id(gene_id, gene_go_annotation, go_onto)
+        filtered_go_onto_keys.update(ancestry_goid)
+        ## If the entire tree is added to the JSON file
+        gene_goid = list(gene_aspect_goid)
+        ## If only the leaves are added to the JSON file
+        # gene_goid = list(gene_aspect_leaf_goid)
+        n_onto += 1
+
+    except KeyError:
+        gene_goid = set()
+
+    try:
+        ancestry_reactid = onto.get_ancestry_id(gene_id, gene_reactome_annotation, react_onto)
+        filtered_react_onto_keys.update(ancestry_reactid)
+        gene_reactid = list(ancestry_reactid)
+        n_onto += 1
+    except KeyError:
+        gene_reactid = set()
 
     if species == "human":
-        ancestry_hpoid = onto.get_ancestry_id(gene_id, gene_hpo_annotation, hpo_onto)
-        rdy2use_data[gene_id]['HPO'] = ancestry_hpoid
+        try:
+            ancestry_hpoid = onto.get_ancestry_id(gene_id, gene_hpo_annotation, hpo_onto)
+            gene_hpoid = list(ancestry_hpoid)
+            n_onto += 1
+        except KeyError:
+            gene_hpoid = set()
+    
+    # if the gene can help find links between multiple ontologies, save the data
+    if n_onto > 1:
+        rdy2use_data[gene_id] = {'GO': gene_goid, 'Reactome': gene_reactid}
+        if species == "human":
+            rdy2use_data[gene_id]['HPO'] = gene_hpoid
 
 end_load = tm.time()
 
 #_________________________________________ E X P O R T
 
-## Filter the GO terms and the REACTerms according to the species
+## Filter the GO terms and the REACTerms on the ontologies according to the species
 delete_go_keys = set(go_onto.keys()).difference(filtered_go_onto_keys)
 for k in delete_go_keys:
     go_onto.pop(k)
@@ -134,15 +159,18 @@ delete_react_keys = set(react_onto.keys()).difference(filtered_react_onto_keys)
 for k in delete_react_keys:
     react_onto.pop(k)
 
-## Export the data as rdy2use files.
+## Export the generated data as rdy2use files.
 cmn.save_as_json(rdy2use_data, "%s/%s_gene_annotation.json" % (rdy2use_path, species))
 onto.save_as_obo(go_onto, "%s/%s_go-basic.obo" % (rdy2use_path, species), "ontology: go")
 onto.save_as_obo(react_onto, "%s/%s_reactome.obo" % (rdy2use_path, species), "ontology: reactome")
-
+with open("%s/%s_gene_symbol.csv" % (rdy2use_path, species), 'wt') as csv:
+    csv.write("symbol,id\n")
+    for key in gene_symbol_id_dict.keys():
+        csv.write("%s,%s\n" % (key, gene_symbol_id_dict[key]))
 
 end_exp = tm.time()
 
-print("\nPreparation completed in %s seconds:\n \
+print("\ndata preparation completed in %s seconds:\n \
     .downloading: %ss\n \
     .loading: %ss\n \
     .exporting: %ss\n"  % (
