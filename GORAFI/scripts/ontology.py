@@ -5,6 +5,8 @@ Functions related to ontology managing.
 @ Asloudj Yanis
 """
 
+from goatools import obo_parser
+
 def save_as_obo(dictio, filename, header):
     """
     # Description
@@ -89,10 +91,10 @@ def get_ancestry_id(gene_id, annotation, ontology, relationship = False):
             tree.update(term.get_all_parents())
     return tree
 
-def get_term_object(term_id, ontologies):
+def get_term_ontology(term_id, ontologies):
     """
     # Description
-    Returns the Term object corresponding to an ID using its first 2 characters.
+    Returns the ontology corresponding to an ID using its first 2 characters.
 
     # Arguments
     ``term_id`` (string): the unique and stable identifier of an ontology term.
@@ -101,8 +103,8 @@ def get_term_object(term_id, ontologies):
     # Usage
     >>> onto = {
         'GO': obo_parser.GODag("go-basic.obo"),
-        'R-': obo_parser.GODAG("reactome.obo")}
-    >>> print(get_term_object("GO:0005524", onto))
-    ... GO:0005524      level-05        depth-08        ATP binding [molecular_function]
+        'R-': obo_parser.GODag("reactome.obo")}
+    >>> print(len(get_term_ontology("GO:0005524", onto)))
+    ... 47284
     """
-    return ontologies[term_id[:2]][term_id]
+    return ontologies[term_id[:2]]
