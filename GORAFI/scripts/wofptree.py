@@ -244,9 +244,7 @@ def get_condition_tree(item, fptree, item_nodes):
         cond_tree += Counter(get_branch(fptree, nid))
     return cond_tree
 
-
-
-def get_association_rules(fptree, item_nodes, min_weight = 0.10):
+def get_association_rules(fptree, item_nodes, min_weight = 0.20):
     """
     # Description
     Returns the items association rules by reading the FPtree.
@@ -270,33 +268,66 @@ def get_association_rules(fptree, item_nodes, min_weight = 0.10):
     >>> get_association_rules(tree, item_nodes, min_weight = 0.5)
     """
     item_nodes.popitem(last=False)
-    frequent_pattern = []
+    frequent_pattern = {}
     for item in item_nodes.keys():
         cond_tree = get_condition_tree(item, fptree, item_nodes)
         for parent_item in cond_tree.keys():
             if cond_tree[parent_item] > min_weight:
-                pattern = "%s%s" % (item, parent_item), round(cond_tree[parent_item], 2)
-                frequent_pattern.append(pattern)
+                pattern = "%s:%s" % (item, parent_item)
+                frequent_pattern[pattern] = round(cond_tree[parent_item], 2)
     return frequent_pattern
 
+def filter_patterns(freq_pat, fix_length = 2):
+    """
+    # Description
+    Returns a dict of frequent patterns after filtering according to items prefix or suffix.
 
+    # Arguments
+    ``freq_pat`` (dict): frequent patterns and their associated weight value.
+    ``fix_length`` (int): the length of the suffix or prefix.
+
+    # Usage
+    >>> trans = [
+            ["GO1", "GO3", "GO2", "R-1"],
+            ["GO2", "HP1", "R-1"],
+            ["HP1", "GO2", "GO1"],
+            ["R-2", "GO3", "R-1"],
+            ["R-1", "GO1"]
+        ]
+    >>> w_items = {'GO1': 1, 'GO2': 1, 'R-1': 1, 'GO3': 1, 'R-2': 1, 'HP1': 1}
+    >>> freq_items, trans_weights = get_frequency_and_weight(trans_db = trans, weight_items = w_items, min_sup = 0.25)
+    >>> tree, item_nodes = construct_fptree(trans, freq_items, trans_weights)
+    >>> asso_rules = get_association_rules(tree, item_nodes)
+    >>> print(asso_rules)
+    ... {'GO1:R-1': 0.4, 'GO2:GO1': 0.4, 'GO2:R-1': 0.4, 'GO3:R-1': 0.4, 'HP1:GO2': 0.4}
+    >>> print(filter_patterns(asso_rules))
+    ... {'GO1:R-1': 0.4, 'GO2:R-1': 0.4, 'GO3:R-1': 0.4, 'HP1:GO2': 0.4}
+    """
+    patterns_to_del = []
+    for pat in freq_pat.keys():
+        terms = pat.split(":")
+        if terms[0][:fix_length] == terms[1][:fix_length]:
+            patterns_to_del.append(pat)
+    for k in patterns_to_del:
+        freq_pat.pop(k)
+    return freq_pat
 
 import time as tm
 begin = tm.time()
 
-
 trans = [
-        ["A", "C", "B", "D"],
-        ["B", "E", "D"],
-        ["E", "B", "A"],
-        ["Y", "C", "D"],
-        ["D", "A"]
+        ["GO1", "GO3", "GO2", "R-1"],
+        ["GO2", "HP1", "R-1"],
+        ["HP1", "GO2", "GO1"],
+        ["R-2", "GO3", "R-1"],
+        ["R-1", "GO1"]
     ]
-w_items = {'A': 2, 'B': 4, 'D': 8, 'C': 1, 'Y': 0.5, 'E': 23}
+w_items = {'GO1': 1, 'GO2': 1, 'R-1': 1, 'GO3': 1, 'R-2': 1, 'HP1': 1}
 freq_items, trans_weights = get_frequency_and_weight(trans_db = trans, weight_items = w_items, min_sup = 0.25)
 tree, item_nodes = construct_fptree(trans, freq_items, trans_weights)
-tree.show(idhidden=False)
-get_association_rules(tree, item_nodes)
+asso_rules = get_association_rules(tree, item_nodes)
+print(asso_rules)
+print(filter_patterns(asso_rules))
 
 end = tm.time()
 print(end - begin)
